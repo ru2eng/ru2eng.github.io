@@ -18,7 +18,7 @@
   <main id="app">
     <header class="app-header">
       <h1>Тренажёр английского</h1>
-      <p class="sub">Переведите русское предложение на английский и сверьтесь с оригиналом Tatoeba</p>
+      <p id="query-word" class="sub"></p>
       <button id="btnTheme">Тема: авто</button>
     </header>
 
@@ -84,6 +84,10 @@
       <button id="btnRetry" class="hidden">Повторить</button>
     </section>
   </main>
+
+  <footer class="app-footer">
+    <p>Переведите русское предложение на английский и сверьтесь с оригиналом Tatoeba</p>
+  </footer>
 
   <script>
     (function () {

@@ -20,6 +20,7 @@
     panelError: $('panel-error'),
     spinner: $('spinner'),
     inputWord: $('input-word'),
+    queryWord: $('query-word'),
     btnSearch: $('btnSearch'),
     ruSentence: $('ru-sentence'),
     answerRow: $('answer-row'),
@@ -590,6 +591,8 @@ function onApiAudioError() {
     el.panelNav.classList.toggle('hidden', !inExercise);
     el.panelAudio.classList.toggle('hidden', step !== 'revealed');
     el.panelError.classList.toggle('hidden', !state.error);
+
+    el.queryWord.textContent = state.step === 'word' ? '' : state.query;
 
     el.btnSearch.disabled = !el.inputWord.value.trim() || step === 'loading';
     el.btnNext.disabled = state.loadingMore;
