@@ -9,6 +9,8 @@
   const RECORD_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
   const GTX_TRANSLATE_URL = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=';
   const MYMEMORY_TRANSLATE_URL = 'https://api.mymemory.translated.net/get?q=';
+  const HARPER_INDEX_URL = 'https://unpkg.com/harper.js@3.2.0/dist/index.js';
+  const HARPER_BINARY_URL = 'https://unpkg.com/harper.js@3.2.0/dist/binary.js';
 
   const $ = (id) => document.getElementById(id);
 
@@ -42,6 +44,10 @@
     errorText: $('error-text'),
     btnRetry: $('btnRetry'),
     hint: $('hint'),
+    lintDialog: $('lint-dialog'),
+    lintList: $('lint-list'),
+    btnLintClose: $('btnLintClose'),
+    checkingHint: $('checking-hint'),
   };
 
   const state = {
@@ -60,6 +66,7 @@
     recording: null,        // { blobUrl, mime }
     recordingActive: false,
     error: null,            // { message, retry }
+    grammar: null,          // { status: 'checking'|'ok'|'errors'|'unavailable', lints: [...] }
   };
 
   // Хэндлы MediaRecorder — вне state, т.к. это не UI-состояние.
@@ -68,6 +75,9 @@
   let chunks = [];
   let recorderToken = 0;
   let preloadMode = false;
+  let harperLinter = null;
+  let harperLoadPromise = null;
+  let grammarToken = 0;
 
   // ---------- утилиты ----------
 
@@ -293,6 +303,119 @@
     );
   }
 
+  // ---------- проверка грамматики (harper.js) ----------
+
+  async function loadHarper() {
+    if (harperLoadPromise) return harperLoadPromise;
+    harperLoadPromise = Promise.all([
+      import(HARPER_INDEX_URL),
+      import(HARPER_BINARY_URL),
+    ]).then(async ([idx, bin]) => {
+      const linter = new idx.WorkerLinter({ binary: bin.binary });
+      await linter.setup();
+      harperLinter = linter;
+      return linter;
+    }).catch((err) => {
+      harperLoadPromise = null;
+      throw err;
+    });
+    return harperLoadPromise;
+  }
+
+  function freeGrammar() {
+    const g = state.grammar;
+    if (g && Array.isArray(g.lints)) {
+      for (const l of g.lints) { try { l.free(); } catch (e) { /* ignore */ } }
+    }
+  }
+
+  async function runGrammarCheck() {
+    const item = currentItem();
+    const text = state.userAnswer;
+    const token = ++grammarToken;
+    if (!item || !text) {
+      freeGrammar();
+      state.grammar = { status: 'idle', lints: [] };
+      renderState();
+      return;
+    }
+    const your = normalize(text);
+    const correct = normalize(item.enText);
+    if (your === correct) return;
+    freeGrammar();
+    state.grammar = { status: 'checking', lints: [] };
+    renderState();
+    try {
+      const linter = await loadHarper();
+      if (token !== grammarToken) return;
+      const lints = await linter.lint(text, { language: 'plaintext' });
+      if (token !== grammarToken) return;
+      freeGrammar();
+      state.grammar = { status: lints.length ? 'errors' : 'ok', lints };
+    } catch (err) {
+      if (token !== grammarToken) return;
+      freeGrammar();
+      state.grammar = { status: 'unavailable', lints: [] };
+    }
+    renderState();
+  }
+
+  function openLintDialog() {
+    const g = state.grammar;
+    if (!g) return;
+    if (g.status === 'unavailable') {
+      el.lintList.textContent = '';
+      const msg = document.createElement('p');
+      msg.className = 'lint-unavailable';
+      msg.textContent = 'Проверка грамматики недоступна: не удалось загрузить сервис проверки (нет соединения?). Ваш вариант отличается от эталона.';
+      el.lintList.appendChild(msg);
+      el.lintDialog.showModal();
+      return;
+    }
+    if (g.status !== 'errors' || !g.lints.length) return;
+    el.lintList.textContent = '';
+    g.lints.forEach((lint, i) => {
+      const item = document.createElement('div');
+      item.className = 'lint-item';
+      const h = document.createElement('p');
+      h.className = 'lint-message';
+      h.textContent = lint.message();
+      const scope = document.createElement('p');
+      scope.className = 'lint-scope';
+      scope.textContent = 'Фрагмент: «' + lint.get_problem_text() + '»';
+      item.appendChild(h);
+      item.appendChild(scope);
+      const suggestions = lint.suggestions();
+      suggestions.forEach((s, j) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Исправить: ' + s.get_replacement_text();
+        b.addEventListener('click', () => applySuggestionFix(i, j));
+        item.appendChild(b);
+      });
+      el.lintList.appendChild(item);
+    });
+    el.lintDialog.showModal();
+  }
+
+  async function applySuggestionFix(lintIdx, sugIdx) {
+    const g = state.grammar;
+    const lint = g && g.lints && g.lints[lintIdx];
+    if (!lint) return;
+    const sugg = lint.suggestions()[sugIdx];
+    if (!sugg) return;
+    try {
+      const fixed = await harperLinter.applySuggestion(state.userAnswer, lint, sugg);
+      try { el.lintDialog.close(); } catch (e) { /* ignore */ }
+      if (fixed != null) {
+        el.inputAnswer.value = fixed;
+        onCheck();
+      }
+    } catch (err) {
+      showHint('Не удалось применить исправление.');
+    }
+  }
+
   // ---------- упражнение ----------
 
 function resetExercise() {
@@ -303,6 +426,9 @@ function resetExercise() {
   state.audioIndex = 0;
   state.audioUnavailable = false;
   state.preloadFailed = false;
+  freeGrammar();
+  state.grammar = null;
+  try { el.lintDialog.close(); } catch (e) { /* ignore */ }
   stopApiAudio();
   discardRecording();
   hideHint();
@@ -319,8 +445,11 @@ function resetExercise() {
     state.userAnswer = el.inputAnswer.value.trim();
     state.revealed = true;
     state.step = 'revealed';
+    freeGrammar();
+    state.grammar = { status: 'checking', lints: [] };
     renderState();
     playApiAudio();
+    runGrammarCheck();
   }
 
   async function onNext() {
@@ -629,10 +758,19 @@ function onApiAudioError() {
       const your = normalize(state.userAnswer);
       const correct = item ? normalize(item.enText) : '';
       const matched = your === correct && your !== '';
+      const g = state.grammar || { status: 'checking' };
+      const near = !matched && g.status === 'ok';
+      const bad = !matched && (g.status === 'errors' || g.status === 'unavailable' || g.status === 'idle');
       el.yourCell.classList.toggle('match', matched);
-      el.yourCell.classList.toggle('mismatch', !matched);
+      el.yourCell.classList.toggle('near', near);
+      el.yourCell.classList.toggle('mismatch', bad);
+      el.yourCell.classList.toggle('clickable', bad);
+      el.yourCell.title = bad ? 'Нажмите, чтобы увидеть подробности' : '';
+      const checking = !matched && !bad && !near;
+      el.checkingHint.classList.toggle('hidden', !checking);
     } else {
-      el.yourCell.classList.remove('match', 'mismatch');
+      el.yourCell.classList.remove('match', 'near', 'mismatch', 'clickable');
+      if (el.checkingHint) el.checkingHint.classList.add('hidden');
     }
 
     el.btnReplayApi.disabled = state.audioUnavailable;
@@ -660,6 +798,14 @@ function onApiAudioError() {
   el.btnPlayMine.addEventListener('click', onPlayMine);
   el.btnRetry.addEventListener('click', onRetry);
   el.apiAudio.addEventListener('error', onApiAudioError);
+  el.yourCell.addEventListener('click', onYourCellClick);
+  el.btnLintClose.addEventListener('click', () => { try { el.lintDialog.close(); } catch (e) { /* ignore */ } });
+
+  function onYourCellClick() {
+    const g = state.grammar;
+    if (!g) return;
+    if (g.status === 'errors' || g.status === 'unavailable') openLintDialog();
+  }
 
   renderState();
 })();

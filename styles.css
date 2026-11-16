@@ -16,6 +16,9 @@
   --bad-bg: #fdeaea;
   --bad-border: #f3c1c4;
   --bad-text: #8f2d2d;
+  --near-bg: #f0f4d4;
+  --near-border: #d8e097;
+  --near-text: #6b731f;
   --cell-bg: #f9fbfd;
   --input-bg: #ffffff;
   --input-disabled-bg: #f3f6fa;
@@ -49,6 +52,9 @@ html[data-theme="dark"] {
   --bad-bg: #3a1d1d;
   --bad-border: #6e3535;
   --bad-text: #f0a9a9;
+  --near-bg: #333a1a;
+  --near-border: #5c6a2c;
+  --near-text: #d6e084;
   --cell-bg: #161e2c;
   --input-bg: #141b28;
   --input-disabled-bg: #1e2837;
@@ -82,6 +88,9 @@ html[data-theme="dark"] {
     --bad-bg: #3a1d1d;
     --bad-border: #6e3535;
     --bad-text: #f0a9a9;
+    --near-bg: #333a1a;
+    --near-border: #5c6a2c;
+    --near-text: #d6e084;
     --cell-bg: #161e2c;
     --input-bg: #141b28;
     --input-disabled-bg: #1e2837;
@@ -224,8 +233,16 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 }
 .compare-cell.correct { background: var(--good-bg); border-color: var(--good-border); }
 .compare-cell.match { background: var(--good-bg); border-color: var(--good-border); }
+.compare-cell.near { background: var(--near-bg); border-color: var(--near-border); }
 .compare-cell.mismatch { background: var(--bad-bg); border-color: var(--bad-border); }
+.compare-cell.clickable { cursor: pointer; }
 .retry-group { margin-top: 12px; }
+
+.checking-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 
 .tag {
   display: inline-block;
@@ -238,6 +255,7 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 }
 .compare-cell.correct .tag { color: var(--good); }
 .compare-cell.match .tag { color: var(--good); }
+.compare-cell.near .tag { color: var(--near-text); }
 .compare-cell.mismatch .tag { color: var(--bad-text); }
 
 .tag.auto {
@@ -254,6 +272,7 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .compare-text { margin: 0; font-size: 1.05rem; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .compare-cell.correct .compare-text { color: var(--good-text); }
 .compare-cell.match .compare-text { color: var(--good-text); }
+.compare-cell.near .compare-text { color: var(--near-text); }
 
 .hint { margin: 16px 0 0; font-size: 0.9rem; color: var(--accent); }
 
@@ -292,4 +311,40 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
   }
   .sentence { font-size: 1.3rem; }
   .compare-text { font-size: 1rem; }
+  #lint-dialog { width: 92vw; padding: 18px 16px; }
 }
+
+#lint-dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 24px;
+  width: min(560px, 94vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+#lint-dialog::backdrop { background: rgba(10, 16, 28, 0.55); }
+#lint-dialog h2 {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
+}
+.lint-item {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--cell-bg);
+}
+.lint-item:last-child { margin-bottom: 0; }
+.lint-message { margin: 0 0 6px; font-weight: 600; color: var(--bad-text); }
+.lint-scope {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  color: var(--muted);
+  word-break: break-word;
+}
+.lint-item .btn-group { margin-top: 4px; }
+.lint-unavailable { margin: 0; }
+.lint-dialog-actions { margin-top: 16px; justify-content: flex-end; }

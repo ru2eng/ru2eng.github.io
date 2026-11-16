@@ -46,6 +46,7 @@
           <div id="your-cell" class="compare-cell">
             <span class="tag">Ваш вариант</span>
             <p id="your-answer" class="compare-text"></p>
+            <p id="checking-hint" class="checking-hint hidden">Проверяем грамматику…</p>
           </div>
           <div class="compare-cell correct">
             <span class="tag">Правильный вариант</span>
@@ -82,6 +83,14 @@
       <p id="error-text" class="error-text"></p>
       <button id="btnRetry" class="hidden">Повторить</button>
     </section>
+
+    <dialog id="lint-dialog">
+      <h2>Ошибки в вашем ответе</h2>
+      <div id="lint-list"></div>
+      <div class="btn-group lint-dialog-actions">
+        <button id="btnLintClose" class="primary">Закрыть</button>
+      </div>
+    </dialog>
   </main>
 
   <footer class="app-footer">
