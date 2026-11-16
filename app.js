@@ -9,8 +9,8 @@
   const RECORD_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
   const GTX_TRANSLATE_URL = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=';
   const MYMEMORY_TRANSLATE_URL = 'https://api.mymemory.translated.net/get?q=';
-  const HARPER_INDEX_URL = 'https://unpkg.com/harper.js@3.2.0/dist/index.js';
-  const HARPER_BINARY_URL = 'https://unpkg.com/harper.js@3.2.0/dist/binary.js';
+  const HARPER_INDEX_URL = './vendor/harper/index.js';
+  const HARPER_BINARY_URL = './vendor/harper/binary.js';
 
   const $ = (id) => document.getElementById(id);
 
