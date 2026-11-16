@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f6fed">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f141d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Тренажёр английского — Tatoeba</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app">
+    <header class="app-header">
+      <h1>Тренажёр английского</h1>
+      <p class="sub">Переведите русское предложение на английский и сверьтесь с оригиналом Tatoeba</p>
+      <button id="btnTheme">Тема: авто</button>
+    </header>
+
+    <section id="panel-word" class="panel hidden">
+      <label for="input-word">Введите английское слово или словосочетание</label>
+      <div class="row">
+        <input id="input-word" type="text" placeholder="например: hello" autocomplete="off" spellcheck="false">
+        <button id="btnSearch" class="primary" disabled>Найти</button>
+      </div>
+      <div id="spinner" class="spinner hidden" role="status" aria-label="Поиск..."></div>
+    </section>
+
+    <section id="panel-exercise" class="panel hidden">
+      <p class="label">Русское предложение — напишите английский перевод</p>
+      <blockquote id="ru-sentence" class="sentence"></blockquote>
+      <p id="auto-badge" class="tag auto hidden">*автоперевод*</p>
+
+      <div id="answer-row" class="row">
+        <input id="input-answer" type="text" placeholder="Ваш английский перевод..." autocomplete="off" spellcheck="false">
+        <button id="btnCheck" class="primary">Проверить</button>
+      </div>
+
+      <div id="compare" class="compare hidden">
+        <p class="label">Проверьте себя</p>
+        <div class="compare-grid">
+          <div id="your-cell" class="compare-cell">
+            <span class="tag">Ваш вариант</span>
+            <p id="your-answer" class="compare-text"></p>
+          </div>
+          <div class="compare-cell correct">
+            <span class="tag">Правильный вариант</span>
+            <p id="correct-answer" class="compare-text"></p>
+          </div>
+        </div>
+        <div class="btn-group retry-group">
+          <button id="btnRetryAnswer">Повторить</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-audio" class="panel hidden">
+      <p class="label">Произношение</p>
+      <div class="btn-group">
+        <button id="btnReplayApi">Произношение (носитель)</button>
+        <button id="btnRecord">Записать моё</button>
+        <button id="btnPlayMine" disabled>Моё произношение</button>
+      </div>
+      <audio id="apiAudio" class="hidden" preload="auto"></audio>
+      <audio id="myAudio" class="hidden"></audio>
+    </section>
+
+    <section id="panel-nav" class="panel hidden">
+      <div class="btn-group">
+        <button id="btnNext" class="primary">Следующее предложение</button>
+        <button id="btnNewWord">Новое слово</button>
+      </div>
+    </section>
+
+    <p id="hint" class="hint hidden"></p>
+
+    <section id="panel-error" class="panel error-box hidden" role="alert">
+      <p id="error-text" class="error-text"></p>
+      <button id="btnRetry" class="hidden">Повторить</button>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      var KEY = 'tatoeba-theme';
+      var MODES = ['system', 'dark', 'light'];
+      var LABELS = { system: 'Тема: авто', dark: 'Тема: тёмная', light: 'Тема: светлая' };
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function apply(mode) {
+        document.documentElement.removeAttribute('data-theme');
+        if (mode === 'dark' || mode === 'light') document.documentElement.setAttribute('data-theme', mode);
+        var dark = mode === 'dark' || (mode === 'system' && mq.matches);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0f141d' : '#2f6fed');
+      }
+
+      function refresh() {
+        var mode = 'system';
+        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
+        apply(mode);
+        var btn = document.getElementById('btnTheme');
+        if (btn) {
+          btn.textContent = LABELS[mode] || LABELS.system;
+          btn.title = 'Переключить тему';
+        }
+      }
+
+      var btn = document.getElementById('btnTheme');
+      if (btn) {
+        btn.addEventListener('click', function () {
+          var mode = 'system';
+          try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
+          var next = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+          try { localStorage.setItem(KEY, next); } catch (e) {}
+          refresh();
+        });
+      }
+      if (mq.addEventListener) mq.addEventListener('change', refresh);
+      else if (mq.addListener) mq.addListener(refresh);
+      refresh();
+    })();
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function () {});
+      });
+    }
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
