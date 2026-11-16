@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f6fed">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f141d">
+  <title>Руководство пользователя — Тренажёр английского</title>
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .guide {
+      max-width: 680px;
+      color: var(--text);
+    }
+    .guide h1 { margin: 0 0 6px; font-size: 1.5rem; letter-spacing: -0.01em; }
+    .guide h2 {
+      margin: 34px 0 10px;
+      padding-bottom: 6px;
+      font-size: 1.18rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .guide h3 { margin: 20px 0 8px; font-size: 1rem; }
+    .guide p, .guide li { line-height: 1.55; }
+    .guide ul, .guide ol { margin: 8px 0 0; padding-left: 22px; }
+    .guide li { margin-bottom: 6px; }
+    .guide kbd {
+      padding: 1px 6px;
+      font-family: inherit;
+      font-size: 0.85em;
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      background: var(--btn-bg);
+    }
+    .guide .tag-status {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .guide .match { background: var(--good-bg); color: var(--good-text); border: 1px solid var(--good-border); }
+    .guide .near { background: var(--near-bg); color: var(--near-text); border: 1px solid var(--near-border); }
+    .guide .mismatch { background: var(--bad-bg); color: var(--bad-text); border: 1px solid var(--bad-border); }
+    .guide .note {
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 10px 10px 0;
+      background: var(--accent-soft);
+      font-size: 0.92rem;
+    }
+    .guide .toc { padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--cell-bg); font-size: 0.92rem; }
+    .guide .toc a { color: var(--accent); text-decoration: none; }
+    .guide .toc a:hover { text-decoration: underline; }
+    .guide table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.92rem; }
+    .guide th, .guide td { padding: 8px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    .guide th { background: var(--btn-bg); font-weight: 600; }
+    .guide .top { display: block; margin-top: 18px; font-size: 0.82rem; color: var(--muted); text-align: right; }
+    .guide-header { margin-bottom: 26px; text-align: center; }
+    .guide-header .sub a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main id="app" class="guide">
+    <header class="guide-header">
+      <h1>Руководство пользователя</h1>
+      <p class="sub">Тренажёр английского на базе открытой базы предложений <a href="https://tatoeba.org/ru">Tatoeba</a></p>
+    </header>
+
+    <nav class="toc" aria-label="Содержание">
+      <strong>Содержание</strong>
+      <ol style="margin:8px 0 0;">
+        <li><a href="#s1">Что это такое</a></li>
+        <li><a href="#s2">Как начать тренировку</a></li>
+        <li><a href="#s3">Упражнение и проверка ответа</a></li>
+        <li><a href="#s4">Проверка грамматики</a></li>
+        <li><a href="#s5">Произношение и запись</a></li>
+        <li><a href="#s6">Навигация по предложениям</a></li>
+        <li><a href="#s7">Установка как приложения (офлайн-режим)</a></li>
+        <li><a href="#s8">Тема оформления</a></li>
+        <li><a href="#s9">Частые вопросы</a></li>
+      </ol>
+    </nav>
+
+    <section id="s1">
+      <h2>1. Что это такое</h2>
+      <p>
+        «Тренажёр английского» — это веб-приложение, которое берёт из базы Tatoeba настоящие
+        английские предложения (с произношением носителей) и показывает вам их русский перевод.
+        Задача — перевести предложение на английский самостоятельно и свериться с оригиналом.
+      </p>
+      <ul>
+        <li>Все предложения подобраны по введённому слову или словосочетанию.</li>
+        <li>Проверка ответа сравнимая: точное совпадение, грамматическая оценка через локальный модуль harper.js.</li>
+        <li>Никаких аккаунтов и отправки ваших ответов на сервер — всё работает в вашем браузере.</li>
+      </ul>
+    </section>
+
+    <section id="s2">
+      <h2>2. Как начать тренировку</h2>
+      <ol>
+        <li>В верхнем поле введите английское слово или словосочетание, например <em>hello</em>.</li>
+        <li>Нажмите <button type="button" class="primary" disabled style="padding:4px 10px; min-height:0;">Найти</button> или клавишу <kbd>Enter</kbd>.</li>
+        <li>Идёт поиск: подбираются случайные предложения, у которых есть аудиозапись и русский перевод.</li>
+      </ol>
+      <p>Если таких предложений мало, поиск автоматически расширяется:</p>
+      <table>
+        <tr><th>Порядок подбора</th><th>Что ищется</th></tr>
+        <tr><td>1</td><td>Предложения с прямым русским переводом и аудио</td></tr>
+        <tr><td>2</td><td>Предложения с любым русским переводом и аудио</td></tr>
+        <tr><td>3</td><td>Предложения с аудио, но без русского перевода — для них перевод подставляет машинный переводчик</td></tr>
+      </table>
+      <div class="note">
+        Если предложение переведено автоматически (не человеком), рядом с ним показывается метка
+        <span class="tag-auto" style="display:inline-block; padding:2px 8px; border-radius:999px; background:var(--tag-auto-bg);">*автоперевод*</span>.
+      </div>
+    </section>
+
+    <section id="s3">
+      <h2>3. Упражнение и проверка ответа</h2>
+      <ol>
+        <li>Вам показано русское предложение (выделено слева синей полосой).</li>
+        <li>Введите свой английский перевод в поле и нажмите <button type="button" class="primary" disabled style="padding:4px 10px; min-height:0;">Проверить</button> или <kbd>Enter</kbd>.</li>
+        <li>Откроется сравнение: <strong>Ваш вариант</strong> и <strong>Правильный вариант</strong> (оригинал из Tatoeba).</li>
+      </ol>
+      <h3>Как оценивается ваш ответ</h3>
+      <table>
+        <tr><th>Результат</th><th>Что означает</th><th>Как выглядит</th></tr>
+        <tr>
+          <td><span class="tag-status match">точное совпадение</span></td>
+          <td>Ваш вариант полностью совпадает с оригиналом</td>
+          <td>Зелёный блок</td>
+        </tr>
+        <tr>
+          <td><span class="tag-status near">рядышком</span></td>
+          <td>Ответ отличается, но грамматических ошибок не найдено (другое слово, другой порядок и т.п.)</td>
+          <td>Жёлто-зелёный блок</td>
+        </tr>
+        <tr>
+          <td><span class="tag-status mismatch">не совпало</span></td>
+          <td>Ответ отличается и содержит грамматические ошибки (см. раздел 4) — либо проверка грамматики недоступна</td>
+          <td>Красный блок</td>
+        </tr>
+      </table>
+      <p>При сравнении не учитываются мелочи: регистр букв, лишние пробелы, знаки препинания в конце, кавычки, тире. То есть <em>«I have an apple.», «i have an apple»</em> и <em>«I have an apple»</em> считаются одинаковыми.</p>
+      <p><button type="button" disabled style="padding:4px 10px; min-height:0;">Повторить</button> — скрывает сравнение и даёт ответить ещё раз.</p>
+    </section>
+
+    <section id="s4">
+      <h2>4. Проверка грамматики</h2>
+      <p>
+        Если ответ не совпал дословно, запускается проверка грамматики (движок harper.js).
+        Она выполняется <strong>прямо в браузере</strong>, без отправки вашего текста куда-либо.
+      </p>
+      <ul>
+        <li>Пока идёт проверка, под вашим ответом — строка «Проверяем грамматику…».</li>
+        <li>Если ошибок найдено, ваш вариант становится красным и кликабельным. Нажмите на него — откроется окно со списком ошибок.</li>
+        <li>Для каждой ошибки показан фрагмент текста и предлагаются исправления — кнопка <strong>«Исправить: …»</strong>. Применение исправления заменяет ваш ответ и сразу запускает повторную проверку.</li>
+      </ul>
+      <div class="note">
+        Первая проверка после открытия приложения может занять несколько секунд —
+        загружается модуль проверки (около 20 МБ). После этого проверка работает и <strong>без интернета</strong>.
+      </div>
+    </section>
+
+    <section id="s5">
+      <h2>5. Произношение и запись</h2>
+      <p>После нажатия «Проверить» автоматически начинает звучать произношение носителя (если браузер разрешает воспроизведение).</p>
+      <table>
+        <tr><th>Кнопка</th><th>Действие</th></tr>
+        <tr>
+          <td><button type="button" disabled style="padding:4px 10px; min-height:0;">Произношение (носитель)</button></td>
+          <td>Повторить аудиозапись из Tatoeba (оригинальная запись носителя для этого предложения)</td>
+        </tr>
+        <tr>
+          <td><button type="button" disabled style="padding:4px 10px; min-height:0;">Записать моё</button></td>
+          <td>Записать свою речь с микрофона; во время записи кнопка меняется на <strong>«■ Остановить запись»</strong></td>
+        </tr>
+        <tr>
+          <td><button type="button" disabled style="padding:4px 10px; min-height:0;">Моё произношение</button></td>
+          <td>Прослушать вашу запись и сравнить с носителем</td>
+        </tr>
+      </table>
+      <h3>Особенности записи</h3>
+      <ul>
+        <li>Запись доступна только на защищённом соединении (<kbd>https</kbd>) — на опубликованной странице это всегда так.</li>
+        <li>Браузер спросит разрешение на доступ к микрофону — разрешите, иначе запись невозможна.</li>
+        <li>Если микрофон занят другой программой, закройте её или проверьте доступ в Параметрах Windows: <em>Конфиденциальность → Микрофон</em>.</li>
+        <li>Запись хранится только у вас на устройстве и сбрасывается при переходе к следующему предложению.</li>
+      </ul>
+      <p>Если для предложения в Tatoeba нет аудио, появится сообщение «Аудио недоступно для этого предложения» — это не ошибка, для этого предложения записи просто не существует.</p>
+    </section>
+
+    <section id="s6">
+      <h2>6. Навигация по предложениям</h2>
+      <table>
+        <tr><th>Кнопка</th><th>Действие</th></tr>
+        <tr>
+          <td><button type="button" disabled style="padding:4px 10px; min-height:0;">Следующее предложение</button></td>
+          <td>Перейти к следующему предложению по выбранному слову</td>
+        </tr>
+        <tr>
+          <td><button type="button" disabled style="padding:4px 10px; min-height:0;">Новое слово</button></td>
+          <td>Начать заново: вернуться к поиску и очистить результаты</td>
+        </tr>
+      </table>
+      <p>
+        Когда предложения по слову закончились, приложение подгружает новые автоматически.
+        Если их больше нет, появится сообщение — нажмите <strong>«Повторить»</strong>, чтобы выполнить поиск заново
+        (для этого же или другого слова).
+      </p>
+    </section>
+
+    <section id="s7">
+      <h2>7. Установка как приложения</h2>
+      <p>
+        Приложение можно установить на телефон или компьютер и запускать как обычное приложение
+        (без адресной строки браузера).
+      </p>
+      <table>
+        <tr><th>Устройство</th><th>Как установить</th></tr>
+        <tr><td>Компьютер (Chrome/Edge)</td><td>Значок «Установить» в адресной строке или меню браузера: «Установить Тренажёр английского»</td></tr>
+        <tr><td>Android (Chrome)</td><td>Меню <kbd>⋮</kbd> → «Добавить на главный экран» или «Установить приложение»</td></tr>
+        <tr><td>iPhone/iPad (Safari)</td><td>Кнопка «Поделиться» <kbd>⎙</kbd> → «На экран "Домой"»</td></tr>
+      </table>
+      <h3>Офлайн-режим</h3>
+      <ul>
+        <li>После первого открытия страница, её оформление и основные блоки доступны без интернета (кеш Service Worker).</li>
+        <li>Проверка грамматики после первой загрузки тоже работает офлайн.</li>
+        <li>Поиск новых предложений, машинный перевод и аудио требуют соединения.</li>
+      </ul>
+      <div class="note">
+        Информация о вашей теме оформления и кеш машинных переводов хранятся локально
+        (localStorage) и остаются на устройстве даже при закрытии страницы.
+      </div>
+    </section>
+
+    <section id="s8">
+      <h2>8. Тема оформления</h2>
+      <p>
+        Внизу страницы есть кнопка <button type="button" id="btnThemeFooterPreview" style="padding:4px 10px; min-height:0;">Тема: авто</button>,
+        она переключает три режима:
+      </p>
+      <ul>
+        <li><strong>авто</strong> — соответствует системной настройке устройства;</li>
+        <li><strong>тёмная</strong> — всегда тёмное оформление;</li>
+        <li><strong>светлая</strong> — всегда светлое оформление.</li>
+      </ul>
+      <p>Выбор сохраняется и применяется при следующих визитах.</p>
+    </section>
+
+    <section id="s9">
+      <h2>9. Частые вопросы</h2>
+      <h3>Почему мой ответ «не совпал», хотя смысл верный?</h3>
+      <p>
+        Точное совпадение требует совпадения формулировки. Если ошибок грамматики нет, ответ
+        показывается как <span class="tag-status near">рядышком</span> — грамматически всё в порядке,
+        но формулировка другая. Обратите внимание на оригинальный вариант — обычно он более естественный.
+      </p>
+      <h3>Течёт ли мой ответ куда-то на сервер?</h3>
+      <p>
+        Нет. Данные приходят только от Tatoeba (исходные предложения) и от машинного перевода.
+        Проверка грамматики (harper.js) выполняется локально в вашем браузере.
+      </p>
+      <h3>Почему появился «автоперевод»?</h3>
+      <p>
+        Для этого предложения в базе нет перевода, сделанного человеком. Чтобы упражнение всё равно
+        было возможным, приложение подставляет автоматический перевод. Такие предложения помечены
+        меткой <span class="tag-auto" style="display:inline-block; padding:2px 8px; border-radius:999px; background:var(--tag-auto-bg);">*автоперевод*</span>.
+      </p>
+      <h3>Что значит «проверка грамматики недоступна»?</h3>
+      <p>
+        Не удалось загрузить модуль проверки (например, нет соединения при первом использовании).
+        Ваш ответ всё равно сравнивается с эталоном — просто без грамматического анализа.
+      </p>
+      <h3>Откуда берутся предложения и аудио?</h3>
+      <p>
+        Из открытого проекта Tatoeba (<a href="https://tatoeba.org/ru">tatoeba.org</a>),
+        а аудиозаписи записаны носителями английского и распространяются по лицензии
+        <span lang="en">CC BY</span> авторов записей.
+      </p>
+      <h3>Можно ли пропустить предложение без ответа?</h3>
+      <p>
+        Да — нажмите «Следующее предложение». Перед этим можно прослушать правильный вариант:
+        он появится, если нажать «Проверить», оставив поле пустым.
+      </p>
+    </section>
+
+    <a class="top" href="#top">К началу</a>
+  </main>
+
+  <footer class="app-footer">
+    <p>Руководство пользователя · Тренажёр английского на базе Tatoeba</p>
+    <button id="btnTheme">Тема: авто</button>
+  </footer>
+
+  <script>
+    (function () {
+      'use strict';
+      var KEY = 'tatoeba-theme';
+      var MODES = ['system', 'dark', 'light'];
+      var LABELS = { system: 'Тема: авто', dark: 'Тема: тёмная', light: 'Тема: светлая' };
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function apply(mode) {
+        document.documentElement.removeAttribute('data-theme');
+        if (mode === 'dark' || mode === 'light') document.documentElement.setAttribute('data-theme', mode);
+        var dark = mode === 'dark' || (mode === 'system' && mq.matches);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0f141d' : '#2f6fed');
+      }
+
+      function refresh() {
+        var mode = 'system';
+        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
+        apply(mode);
+        var buttons = document.querySelectorAll('#btnTheme, #btnThemeFooterPreview');
+        for (var i = 0; i < buttons.length; i++) {
+          buttons[i].textContent = LABELS[mode] || LABELS.system;
+          buttons[i].title = 'Переключить тему';
+        }
+      }
+
+      function onClick() {
+        var mode = 'system';
+        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
+        var next = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+        try { localStorage.setItem(KEY, next); } catch (e) {}
+        refresh();
+      }
+
+      var buttons = document.querySelectorAll('#btnTheme, #btnThemeFooterPreview');
+      for (var i = 0; i < buttons.length; i++) buttons[i].addEventListener('click', onClick);
+      if (mq.addEventListener) mq.addEventListener('change', refresh);
+      else if (mq.addListener) mq.addListener(refresh);
+      refresh();
+    })();
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function () {});
+      });
+    }
+  </script>
+</body>
+</html>
