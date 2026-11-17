@@ -1,6 +1,6 @@
 'use strict';
 
-var CACHE = 'tatoeba-shell-v1';
+var CACHE = 'tatoeba-shell-v2';
 var SHELL = [
   './',
   './index.html',

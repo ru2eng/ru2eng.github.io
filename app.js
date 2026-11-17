@@ -1,11 +1,10 @@
 'use strict';
 
 (function () {
-  const API_BASE = 'https://api.tatoeba.org/v1';
-  const API_ORIGIN = 'https://api.tatoeba.org';
+  const DATA_BASE = './data';
+  const AUDIO_BASE = 'https://api.tatoeba.org/v1/audios';
   const SEARCH_LIMIT = 20;
   const FETCH_TIMEOUT_MS = 90000;
-  const MAX_FOLLOW_PAGES = 4;
   const RECORD_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
   const GTX_TRANSLATE_URL = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=';
   const MYMEMORY_TRANSLATE_URL = 'https://api.mymemory.translated.net/get?q=';
@@ -56,7 +55,8 @@
     pool: [],               // [{ enId, enText, ruText, audios: string[] }]
     cursor: -1,
     seenIds: new Set(),
-    srcNext: null,          // сохранённый paging.next для догрузки
+    candQueue: [],          // id предложений-кандидатов (тир 1 → тир 3)
+    candIdx: 0,
     revealed: false,
     userAnswer: '',
     audioIndex: 0,
@@ -117,47 +117,108 @@
   function resetPool() {
     state.pool = [];
     state.seenIds.clear();
-    state.srcNext = null;
+    state.candQueue = [];
+    state.candIdx = 0;
     state.cursor = -1;
   }
 
-  function findRuTranslation(translations) {
-    if (!Array.isArray(translations)) return null;
-    const direct = translations.find((t) => t.lang === 'rus' && t.is_direct && t.text);
-    if (direct) return direct.text;
-    const any = translations.find((t) => t.lang === 'rus' && t.text);
-    return any ? any.text : null;
+  // ---------- локальные данные Tatoeba ----------
+
+  let localData = null;
+  let localDataPromise = null;
+
+  async function fetchText(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('http_' + res.status);
+    return await res.text();
   }
 
-  function buildPoolItem(raw) {
-    const ruText = findRuTranslation(raw.translations);
-    const audios = (raw.audios || [])
-      .filter((a) => a && (a.id || a.download_url))
-      .map((a) => (a.id ? API_BASE + '/audios/' + a.id + '/file' : a.download_url));
+  function parseJsonl(text) {
+    const map = new Map();
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      const o = JSON.parse(line);
+      if (o && o.id != null) map.set(o.id, o.t);
+    }
+    return map;
+  }
+
+  async function loadData() {
+    const [engRaw, ruRaw, links, audio, wordidx] = await Promise.all([
+      fetchText(DATA_BASE + '/eng.jsonl'),
+      fetchText(DATA_BASE + '/ru.jsonl'),
+      fetchText(DATA_BASE + '/links.json'),
+      fetchText(DATA_BASE + '/audio.json'),
+      fetchText(DATA_BASE + '/wordidx.json'),
+    ]);
+    localData = {
+      engMap: parseJsonl(engRaw),
+      ruMap: parseJsonl(ruRaw),
+      linksMap: new Map(Object.entries(JSON.parse(links))),
+      audioMap: new Map(Object.entries(JSON.parse(audio))),
+      wordidx: JSON.parse(wordidx),
+    };
+    return localData;
+  }
+
+  function ensureData() {
+    if (localData) return Promise.resolve(localData);
+    if (localDataPromise) return localDataPromise;
+    localDataPromise = loadData().catch((err) => { localDataPromise = null; throw err; });
+    return localDataPromise;
+  }
+
+  function tokenizeQuery(q) {
+    const norm = q.normalize('NFKC').toLowerCase();
+    const toks = (norm.match(/[0-9a-z']+/g) || [])
+      .map((t) => t.replace(/^'+|'+$/g, ''))
+      .filter(Boolean);
+    return [...new Set(toks)];
+  }
+
+  function intersectArrays(a, b) {
+    const small = a.length <= b.length ? a : b;
+    const large = a.length <= b.length ? b : a;
+    const set = new Set(small);
+    return large.filter((x) => set.has(x));
+  }
+
+  function shuffle(a) {
+    const arr = a.slice();
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function buildLocalItem(id) {
+    const d = localData;
+    const text = d.engMap.get(id);
+    if (!text) return null;
+    let ruText = null;
+    const ruIds = d.linksMap.get(String(id));
+    if (ruIds && ruIds.length) {
+      for (const rid of ruIds) {
+        const t = d.ruMap.get(rid) || d.ruMap.get(String(rid));
+        if (t) { ruText = t; break; }
+      }
+    }
+    const audioIds = d.audioMap.get(String(id));
+    const audios = (audioIds || []).map((a) => AUDIO_BASE + '/' + a + '/file');
     if (!audios.length) return null;
-    return { enId: raw.id, enText: raw.text, ruText, auto: !ruText, audios };
+    return { enId: id, enText: text, ruText, auto: !ruText, audios };
   }
 
-  function appendPool(data) {
-    let addedCount = 0;
-    for (const raw of (data && data.data) || []) {
-      const item = buildPoolItem(raw);
-      if (!item || state.seenIds.has(item.enId)) continue;
-      state.seenIds.add(item.enId);
+  function fillPool(target) {
+    while (state.pool.length < target && state.candIdx < state.candQueue.length) {
+      const id = state.candQueue[state.candIdx++];
+      if (state.seenIds.has(id)) continue;
+      const item = buildLocalItem(id);
+      if (!item) continue;
+      state.seenIds.add(id);
       state.pool.push(item);
-      addedCount++;
     }
-    const paging = data && data.paging;
-    state.srcNext = paging && paging.has_next && paging.next ? paging.next : null;
-    return addedCount;
-  }
-
-  function resolveNext(next) {
-    if (/^https?:\/\//i.test(next)) {
-      if (API_BASE === API_ORIGIN + '/v1') return next;
-      return next.replace(API_ORIGIN, new URL(API_BASE).origin);
-    }
-    return API_BASE + (next.startsWith('/') ? next : '/' + next);
   }
 
   async function fetchTimeout(url) {
@@ -177,43 +238,26 @@
     }
   }
 
-  // ---------- поиск в Tatoeba ----------
+  // ---------- локальный поиск ----------
 
   async function performSearch(q) {
     resetPool();
-    const tiers = [
-      { params: [['trans:lang', 'rus'], ['trans:is_direct', 'yes']] },
-      { params: [['trans:lang', 'rus']] },
-      { params: [['!trans:lang', 'rus']] },
-    ];
-    let found = false;
-    for (const tier of tiers) {
-      if (state.pool.length >= SEARCH_LIMIT) break;
-      const params = new URLSearchParams({
-        q,
-        lang: 'eng',
-        has_audio: 'yes',
-        showtrans: 'matching',
-        include: 'audios',
-        sort: 'random',
-        word_count: '-20',
-        limit: String(SEARCH_LIMIT),
-      });
-      for (const [k, v] of tier.params) params.set(k, v);
-
-      let data = await fetchTimeout(API_BASE + '/sentences?' + params.toString());
-      let added = appendPool(data);
-      let pages = 0;
-      while (added === 0 && state.srcNext && pages < MAX_FOLLOW_PAGES && state.pool.length < SEARCH_LIMIT) {
-        const next = state.srcNext;
-        state.srcNext = null;
-        data = await fetchTimeout(resolveNext(next));
-        added = appendPool(data);
-        pages++;
-      }
-      if (added > 0) found = true;
+    const d = await ensureData();
+    const tokens = tokenizeQuery(q);
+    let cands = null;
+    for (const tok of tokens) {
+      const list = d.wordidx[tok];
+      if (!list) return false;
+      const set = new Set(list);
+      cands = cands === null ? list : cands.filter((id) => set.has(id));
     }
-    return found;
+    if (!cands || !cands.length) return false;
+    const withRu = cands.filter((id) => d.linksMap.has(String(id)));
+    const withoutRu = cands.filter((id) => !d.linksMap.has(String(id)));
+    state.candQueue = shuffle(withRu).concat(shuffle(withoutRu));
+    state.candIdx = 0;
+    fillPool(SEARCH_LIMIT);
+    return state.pool.length > 0;
   }
 
   async function onSearch() {
@@ -238,10 +282,7 @@
       renderState();
     } catch (err) {
       state.step = 'word';
-      const msg = err.message === 'timeout'
-        ? 'Сервер Tatoeba не ответил вовремя. Проверьте соединение.'
-        : 'Не удалось получить данные от Tatoeba. Проверьте соединение.';
-      setError(msg, true);
+      setError('Не удалось загрузить данные. Проверьте соединение.', true);
       renderState();
     }
   }
@@ -385,35 +426,9 @@
       scope.textContent = 'Фрагмент: «' + lint.get_problem_text() + '»';
       item.appendChild(h);
       item.appendChild(scope);
-      const suggestions = lint.suggestions();
-      suggestions.forEach((s, j) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = 'Исправить: ' + s.get_replacement_text();
-        b.addEventListener('click', () => applySuggestionFix(i, j));
-        item.appendChild(b);
-      });
       el.lintList.appendChild(item);
     });
     el.lintDialog.showModal();
-  }
-
-  async function applySuggestionFix(lintIdx, sugIdx) {
-    const g = state.grammar;
-    const lint = g && g.lints && g.lints[lintIdx];
-    if (!lint) return;
-    const sugg = lint.suggestions()[sugIdx];
-    if (!sugg) return;
-    try {
-      const fixed = await harperLinter.applySuggestion(state.userAnswer, lint, sugg);
-      try { el.lintDialog.close(); } catch (e) { /* ignore */ }
-      if (fixed != null) {
-        el.inputAnswer.value = fixed;
-        onCheck();
-      }
-    } catch (err) {
-      showHint('Не удалось применить исправление.');
-    }
   }
 
   // ---------- упражнение ----------
@@ -452,7 +467,7 @@ function resetExercise() {
     runGrammarCheck();
   }
 
-  async function onNext() {
+  function onNext() {
     if (state.loadingMore || state.pool.length === 0) return;
     clearError();
     if (state.cursor + 1 < state.pool.length) {
@@ -461,41 +476,16 @@ function resetExercise() {
       renderState();
       return;
     }
-    if (!state.srcNext) {
-      setError('Предложения по этому слову закончились. Нажмите «Повторить» для нового поиска или выберите новое слово.', true);
+    const before = state.pool.length;
+    fillPool(state.pool.length + SEARCH_LIMIT);
+    if (state.pool.length > before) {
+      state.cursor = before;
+      resetExercise();
       renderState();
       return;
     }
-    state.loadingMore = true;
+    setError('Предложения по этому слову закончились. Нажмите «Повторить» для нового поиска или выберите новое слово.', true);
     renderState();
-    try {
-      let pages = 0;
-      while (state.srcNext && pages <= MAX_FOLLOW_PAGES) {
-        const next = state.srcNext;
-        state.srcNext = null;
-        const data = await fetchTimeout(resolveNext(next));
-        const before = state.pool.length;
-        appendPool(data);
-        if (state.pool.length > before) {
-          state.cursor = before;
-          state.loadingMore = false;
-          resetExercise();
-          renderState();
-          return;
-        }
-        pages++;
-      }
-      state.loadingMore = false;
-      setError('Предложения по этому слову закончились. Нажмите «Повторить» для нового поиска или выберите новое слово.', true);
-      renderState();
-    } catch (err) {
-      state.loadingMore = false;
-      const msg = err.message === 'timeout'
-        ? 'Сервер Tatoeba не ответил вовремя. Проверьте соединение.'
-        : 'Не удалось загрузить следующие предложения. Проверьте соединение.';
-      setError(msg, true);
-      renderState();
-    }
   }
 
   function onNewWord() {

@@ -1,0 +1,12 @@
+{
+  "build_date": "2026-11-17 09:29:00 UTC",
+  "dump_date": "2026-11-14",
+  "source": "https://downloads.tatoeba.org/exports/per_language",
+  "stat": {
+    "eng_with_audio": 849643,
+    "ru_sentences": 461935,
+    "links": 534019,
+    "audio_records": 850991,
+    "word_tokens": 26596
+  }
+}
