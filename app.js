@@ -5,6 +5,8 @@
   const AUDIO_BASE = 'https://api.tatoeba.org/v1/audios';
   const SEARCH_LIMIT = 20;
   const FETCH_TIMEOUT_MS = 90000;
+  const AUDIO_RETRY_DELAY_MS = 400;
+  const AUDIO_MAX_RETRIES = 2;
   const RECORD_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
   const GTX_TRANSLATE_URL = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=';
   const MYMEMORY_TRANSLATE_URL = 'https://api.mymemory.translated.net/get?q=';
@@ -60,6 +62,7 @@
     revealed: false,
     userAnswer: '',
     audioIndex: 0,
+    audioRetries: 0,
     audioUnavailable: false,
     preloadFailed: false,
     loadingMore: false,
@@ -439,6 +442,7 @@ function resetExercise() {
   state.revealed = false;
   state.step = 'exercise';
   state.audioIndex = 0;
+  state.audioRetries = 0;
   state.audioUnavailable = false;
   state.preloadFailed = false;
   freeGrammar();
@@ -510,55 +514,89 @@ function resetExercise() {
       return;
     }
     if (state.audioIndex >= item.audios.length) state.audioIndex = 0;
-    const url = item.audios[state.audioIndex];
     preloadMode = false;
-    if (el.apiAudio.getAttribute('src') !== url) {
-      try {
-        el.apiAudio.preload = 'auto';
-        el.apiAudio.src = url;
-        el.apiAudio.load();
-      } catch (e) { /* ignore */ }
+    loadApiAudio(item.audios[state.audioIndex]);
+    playWhenReady();
+  }
+
+  function loadApiAudio(url) {
+    if (el.apiAudio.getAttribute('src') === url && state.audioRetries === 0) return;
+    try {
+      el.apiAudio.preload = 'auto';
+      el.apiAudio.src = url;
+      el.apiAudio.load();
+    } catch (e) { /* ignore */ }
+  }
+
+  function playWhenReady() {
+    if (el.apiAudio.readyState >= 2) {
+      doPlayApiAudio();
+      return;
     }
-    el.apiAudio.play()
-      .then(() => hideHint())
-      .catch(() => showHint('Нажмите «Произношение (носитель)», чтобы прослушать произношение.'));
+    let done = false;
+    const onCanPlay = () => finish();
+    const timer = setTimeout(finish, 8000);
+    function finish() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      el.apiAudio.removeEventListener('canplay', onCanPlay);
+      doPlayApiAudio();
+    }
+    el.apiAudio.addEventListener('canplay', onCanPlay);
+    function doPlayApiAudio() {
+      el.apiAudio.play()
+        .then(() => hideHint())
+        .catch(() => showHint('Нажмите «Произношение (носитель)», чтобы прослушать произношение.'));
+    }
   }
 
 function preloadApiAudio() {
   const item = currentItem();
   if (!item || state.audioUnavailable || state.preloadFailed) return;
   const url = item.audios[state.audioIndex];
-  if (!url || el.apiAudio.getAttribute('src') === url) return;
+  if (!url) return;
+  if (el.apiAudio.getAttribute('src') === url && state.audioRetries === 0) return;
   preloadMode = true;
-  try {
-    el.apiAudio.preload = 'auto';
-    el.apiAudio.src = url;
-    el.apiAudio.load();
-  } catch (e) { /* ignore */ }
+  loadApiAudio(url);
 }
 
-function onApiAudioError() {
-  const item = currentItem();
-  const currentSrc = el.apiAudio.getAttribute('src');
-  if (!item || state.audioUnavailable || !currentSrc) return;
-  state.audioIndex++;
-  if (state.audioIndex < item.audios.length) {
-    if (preloadMode && state.step === 'exercise') {
-      preloadApiAudio();
-    } else {
-      playApiAudio();
+  function onApiAudioError() {
+    const item = currentItem();
+    const currentSrc = el.apiAudio.getAttribute('src');
+    if (!item || state.audioUnavailable || !currentSrc) return;
+    state.audioRetries++;
+    if (state.audioRetries <= AUDIO_MAX_RETRIES) {
+      setTimeout(() => {
+        if (currentItem() !== item || state.audioUnavailable) return;
+        if (el.apiAudio.getAttribute('src') !== currentSrc) return;
+        if (preloadMode && state.step === 'exercise') {
+          preloadApiAudio();
+        } else {
+          playApiAudio();
+        }
+      }, AUDIO_RETRY_DELAY_MS);
+      return;
     }
-    return;
-  }
-  state.preloadFailed = true;
-  if (preloadMode && state.step === 'exercise') {
+    state.audioRetries = 0;
+    state.audioIndex++;
+    if (state.audioIndex < item.audios.length) {
+      if (preloadMode && state.step === 'exercise') {
+        preloadApiAudio();
+      } else {
+        playApiAudio();
+      }
+      return;
+    }
+    state.preloadFailed = true;
+    if (preloadMode && state.step === 'exercise') {
+      renderState();
+      return;
+    }
+    state.audioUnavailable = true;
+    setError('Аудио недоступно для этого предложения.', false);
     renderState();
-    return;
   }
-  state.audioUnavailable = true;
-  setError('Аудио недоступно для этого предложения.', false);
-  renderState();
-}
 
   function onRetryAnswer() {
     resetExercise();
@@ -788,6 +826,7 @@ function onApiAudioError() {
   el.btnPlayMine.addEventListener('click', onPlayMine);
   el.btnRetry.addEventListener('click', onRetry);
   el.apiAudio.addEventListener('error', onApiAudioError);
+  el.apiAudio.addEventListener('canplay', () => { state.audioRetries = 0; });
   el.yourCell.addEventListener('click', onYourCellClick);
   el.btnLintClose.addEventListener('click', () => { try { el.lintDialog.close(); } catch (e) { /* ignore */ } });
 
