@@ -1,24 +1,26 @@
-"""Tatoeba local data builder.
+"""Tatoeba local data builder (chunked).
 
 Downloads Tatoeba per-language dump files, unpacks them and builds a compact
 local dataset in data/ that replaces the live Tatoeba API for the trainer app.
 
+Instead of one monolithic file per dataset, the output is split into small
+chunk files so a client fetches only the chunks it needs (lazy loading):
+
+    data/manifest.json             build metadata: version, chunk lists, stats
+    data/widx/widx_<char>.json     inverted index {token: [engId,...]} per first char
+    data/packs/pack_<bucket>.json  { engId: {t, a, l} } per eng id bucket
+    data/ru/ru_<bucket>.jsonl      russian sentences per rus id bucket
+
 Usage:
-    python tools/build_index.py [--limit N] [--dump-dir DIR] [--out DIR] [--keep]
+    python tools/build_index.py [--limit N] [--dump-dir DIR] [--out DIR]
+                                [--skip-download] [--chunk-size N]
 
 Options:
     --limit N       process at most N lines from each dump (test mode)
     --dump-dir DIR  cache directory for downloaded .bz2 dumps
     --out DIR       output directory for generated data files
     --skip-download reuse existing dump files without re-downloading
-
-Outputs:
-    data/eng.jsonl       {"id":N,"t":"...","w":K}   eng sentences (<=20 words, with audio)
-    data/ru.jsonl        {"id":N,"t":"..."}         russian sentences referenced by links
-    data/links.json      { "engId": [rusId,...], ... }
-    data/audio.json      { "engId": [audioId,...], ... }   (no license filter)
-    data/wordidx.json    { "token": [engId,...], ... }
-    data/version.json    build metadata
+    --chunk-size N  id buckets for packs/ru chunks (default 100000)
 """
 
 import argparse
@@ -26,6 +28,7 @@ import bz2
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import unicodedata
@@ -44,18 +47,22 @@ FILES = [
 AUDIO_BASE_URL = "https://tatoeba.org/audio"
 
 HARD_LIMIT = 100 * 1024 * 1024
-WARN_LIMIT = 90 * 1024 * 1024
 
 
 def out_paths(root):
     return {
-        "eng": os.path.join(root, "eng.jsonl"),
-        "ru": os.path.join(root, "ru.jsonl"),
-        "links": os.path.join(root, "links.json"),
-        "audio": os.path.join(root, "audio.json"),
-        "wordidx": os.path.join(root, "wordidx.json"),
-        "version": os.path.join(root, "version.json"),
+        "manifest": os.path.join(root, "manifest.json"),
+        "widx": os.path.join(root, "widx"),
+        "packs": os.path.join(root, "packs"),
+        "ru": os.path.join(root, "ru"),
     }
+
+
+def legacy_paths(root):
+    return [
+        os.path.join(root, n)
+        for n in ("eng.jsonl", "ru.jsonl", "links.json", "audio.json", "wordidx.json", "version.json")
+    ]
 
 
 def download(url, dest):
@@ -96,6 +103,7 @@ def main():
     parser.add_argument("--dump-dir", default=os.path.join(tempfile.gettempdir(), "kilo", "tatoeba_dumps"))
     parser.add_argument("--out", default="data")
     parser.add_argument("--skip-download", action="store_true")
+    parser.add_argument("--chunk-size", type=int, default=100000, help="id bucket size for packs/ru chunks")
     args = parser.parse_args()
 
     if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -104,6 +112,7 @@ def main():
     dump_dir = args.dump_dir
     out_dir = args.out
     limit = args.limit or None
+    chunk = max(1, args.chunk_size)
     os.makedirs(dump_dir, exist_ok=True)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -173,38 +182,69 @@ def main():
     for ids in kept_links.values():
         referenced_ru.update(ids)
 
-    print("building word index ...", flush=True)
+    print("building word index (split by first char) ...", flush=True)
     wordidx = {}
     for sid in kept_ids:
         for tok in set(tokenize_key(eng_text[sid])):
             wordidx.setdefault(tok, set()).add(sid)
+    by_char = {}
+    for tok, ids in sorted(wordidx.items()):
+        by_char.setdefault(tok[0], {})[tok] = sorted(ids)
 
     paths = out_paths(out_dir)
+    for p in legacy_paths(out_dir):
+        if os.path.exists(p):
+            os.remove(p)
+    for d in (paths["widx"], paths["packs"], paths["ru"]):
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        os.makedirs(d, exist_ok=True)
+
     target_estimate = 0
 
-    with open(paths["eng"], "w", encoding="utf-8", newline="\n") as fh:
-        for sid in kept_ids:
-            fh.write(json.dumps({"id": sid, "t": eng_text[sid], "w": eng_words[sid]}, ensure_ascii=False) + "\n")
-    target_estimate += os.path.getsize(paths["eng"])
+    widx_chars = []
+    widx_sizes = []
+    for c, data in sorted(by_char.items()):
+        fname = os.path.join(paths["widx"], f"widx_{c}.json")
+        with open(fname, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
+        widx_chars.append(c)
+        widx_sizes.append(f"{c}:{os.path.getsize(fname)}")
+        target_estimate += os.path.getsize(fname)
 
-    with open(paths["ru"], "w", encoding="utf-8", newline="\n") as fh:
-        for sid in sorted(referenced_ru):
-            fh.write(json.dumps({"id": sid, "t": rus_text[sid]}, ensure_ascii=False) + "\n")
-    target_estimate += os.path.getsize(paths["ru"])
+    pack_buckets = {}
+    for sid in kept_ids:
+        pack_buckets.setdefault(sid // chunk, {})[str(sid)] = {
+            "t": eng_text[sid],
+            "a": kept_audio[sid],
+            "l": kept_links.get(sid, []),
+        }
+    pack_list = []
+    pack_sizes = []
+    for bucket in sorted(pack_buckets):
+        fname = os.path.join(paths["packs"], f"pack_{bucket}.json")
+        with open(fname, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(pack_buckets[bucket], fh, ensure_ascii=False, separators=(",", ":"))
+        pack_list.append(bucket)
+        pack_sizes.append(f"{bucket}:{os.path.getsize(fname)}")
+        target_estimate += os.path.getsize(fname)
 
-    with open(paths["links"], "w", encoding="utf-8", newline="\n") as fh:
-        json.dump({str(k): v for k, v in kept_links.items()}, fh, ensure_ascii=False, separators=(",", ":"))
-    target_estimate += os.path.getsize(paths["links"])
-
-    with open(paths["audio"], "w", encoding="utf-8", newline="\n") as fh:
-        json.dump({str(k): v for k, v in kept_audio.items()}, fh, ensure_ascii=False, separators=(",", ":"))
-    target_estimate += os.path.getsize(paths["audio"])
-
-    with open(paths["wordidx"], "w", encoding="utf-8", newline="\n") as fh:
-        json.dump({k: sorted(v) for k, v in sorted(wordidx.items())}, fh, ensure_ascii=False, separators=(",", ":"))
-    target_estimate += os.path.getsize(paths["wordidx"])
+    ru_buckets = {}
+    for rid in referenced_ru:
+        ru_buckets.setdefault(rid // chunk, []).append(rid)
+    ru_list = []
+    ru_sizes = []
+    for bucket in sorted(ru_buckets):
+        fname = os.path.join(paths["ru"], f"ru_{bucket}.jsonl")
+        with open(fname, "w", encoding="utf-8", newline="\n") as fh:
+            for rid in sorted(ru_buckets[bucket]):
+                fh.write(json.dumps({"id": rid, "t": rus_text[rid]}, ensure_ascii=False) + "\n")
+        ru_list.append(bucket)
+        ru_sizes.append(f"{bucket}:{os.path.getsize(fname)}")
+        target_estimate += os.path.getsize(fname)
 
     meta = {
+        "chunk": chunk,
         "build_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "dump_date": "2026-11-14",
         "source": BASE_URL,
@@ -215,21 +255,32 @@ def main():
             "audio_records": sum(len(v) for v in kept_audio.values()),
             "word_tokens": len(wordidx),
         },
+        "widx": widx_chars,
+        "packs": pack_list,
+        "ru": ru_list,
     }
-    with open(paths["version"], "w", encoding="utf-8", newline="\n") as fh:
+    with open(paths["manifest"], "w", encoding="utf-8", newline="\n") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
-    target_estimate += os.path.getsize(paths["version"])
+    target_estimate += os.path.getsize(paths["manifest"])
 
     print(flush=True)
-    for key in ("eng", "ru", "links", "audio", "wordidx", "version"):
-        size = os.path.getsize(paths[key])
-        print(f"  {paths[key]}  {size/1024:.0f} KiB", flush=True)
-    print(f"\ntotal data: {target_estimate/1024/1024:.1f} MiB", flush=True)
-    if any(os.path.getsize(paths[k]) > HARD_LIMIT for k in ("eng", "ru", "links", "audio", "wordidx")):
-        print("FAIL: a data file exceeds 100 MiB (GitHub Pages limit) - use Plan B (shard/binary)", file=sys.stderr)
+    for c, w in zip(widx_chars, widx_sizes):
+        print(f"  widx_{w}", flush=True)
+    for w in pack_sizes:
+        print(f"  pack_{w}", flush=True)
+    for w in ru_sizes:
+        print(f"  ru_{w}", flush=True)
+    print(f"  {paths['manifest']}  {os.path.getsize(paths['manifest'])/1024:.1f} KiB", flush=True)
+    print(f"\ntotal data: {target_estimate/1024/1024:.1f} MiB, largest file check:", end=" ", flush=True)
+    largest = 0
+    for root, _dirs, files in os.walk(out_dir):
+        for name in files:
+            p = os.path.join(root, name)
+            largest = max(largest, os.path.getsize(p))
+    print(f"{largest/1024/1024:.2f} MiB", flush=True)
+    if largest > HARD_LIMIT:
+        print("FAIL: a chunk file exceeds the 100 MiB GitHub Pages per-file limit", file=sys.stderr)
         sys.exit(2)
-    if any(os.path.getsize(paths[k]) > WARN_LIMIT for k in ("eng", "ru", "links", "audio", "wordidx")):
-        print("WARNING: a data file is close to the 100 MiB GitHub Pages limit", file=sys.stderr)
     print("done.", flush=True)
 
 

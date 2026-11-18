@@ -2,6 +2,9 @@
 
 (function () {
   const DATA_BASE = './data';
+  const MANIFEST_URL = DATA_BASE + '/manifest.json';
+  const CHUNK_DEFAULT = 100000;
+  const MAX_PACKS_PER_SEARCH = 6;
   const AUDIO_BASE = 'https://api.tatoeba.org/v1/audios';
   const SEARCH_LIMIT = 20;
   const FETCH_TIMEOUT_MS = 90000;
@@ -57,7 +60,11 @@
     pool: [],               // [{ enId, enText, ruText, audios: string[] }]
     cursor: -1,
     seenIds: new Set(),
-    candQueue: [],          // id предложений-кандидатов (тир 1 → тир 3)
+    bucketOrder: [],        // бакеты id по убыванию числа кандидатов
+    bucketIds: {},          // bucket -> [id,...] кандидатов
+    bucketPos: 0,           // позиция загруженных бакетов
+    packsLoaded: 0,         // паков загружено за поиск (лимит MAX_PACKS_PER_SEARCH)
+    candQueue: [],          // id текущей очереди (тир 1 → тир 2)
     candIdx: 0,
     revealed: false,
     userAnswer: '',
@@ -120,15 +127,26 @@
   function resetPool() {
     state.pool = [];
     state.seenIds.clear();
+    state.bucketOrder = [];
+    state.bucketIds = {};
+    state.bucketPos = 0;
+    state.packsLoaded = 0;
     state.candQueue = [];
     state.candIdx = 0;
     state.cursor = -1;
   }
 
-  // ---------- локальные данные Tatoeba ----------
+  // ---------- локальные данные Tatoeba (чанки, ленивая подкачка) ----------
 
-  let localData = null;
-  let localDataPromise = null;
+  let manifest = null;
+  let manifestPromise = null;
+  let chunk = CHUNK_DEFAULT;
+  const widxCache = {};        // char -> { token: [engId,...] }
+  const widxPending = {};      // char -> Promise
+  const packCache = {};        // bucket -> Map(String(engId) -> {t,a,l})
+  const packPending = {};      // bucket -> Promise
+  const ruCache = {};          // bucket -> Map(ruId -> text)
+  const ruPending = {};        // bucket -> Promise
 
   async function fetchText(url) {
     const res = await fetch(url);
@@ -146,29 +164,85 @@
     return map;
   }
 
-  async function loadData() {
-    const [engRaw, ruRaw, links, audio, wordidx] = await Promise.all([
-      fetchText(DATA_BASE + '/eng.jsonl'),
-      fetchText(DATA_BASE + '/ru.jsonl'),
-      fetchText(DATA_BASE + '/links.json'),
-      fetchText(DATA_BASE + '/audio.json'),
-      fetchText(DATA_BASE + '/wordidx.json'),
-    ]);
-    localData = {
-      engMap: parseJsonl(engRaw),
-      ruMap: parseJsonl(ruRaw),
-      linksMap: new Map(Object.entries(JSON.parse(links))),
-      audioMap: new Map(Object.entries(JSON.parse(audio))),
-      wordidx: JSON.parse(wordidx),
-    };
-    return localData;
+  function bucketOf(id) {
+    return Math.floor(id / chunk);
   }
 
-  function ensureData() {
-    if (localData) return Promise.resolve(localData);
-    if (localDataPromise) return localDataPromise;
-    localDataPromise = loadData().catch((err) => { localDataPromise = null; throw err; });
-    return localDataPromise;
+  function tokenBucketChar(tok) {
+    const c = tok.charCodeAt(0);
+    return (c >= 48 && c <= 57) || (c >= 97 && c <= 122) ? tok[0] : '_';
+  }
+
+  function ensureManifest() {
+    if (manifest) return Promise.resolve(manifest);
+    if (manifestPromise) return manifestPromise;
+    manifestPromise = fetchText(MANIFEST_URL + '?check=' + Date.now())
+      .then((text) => {
+        manifest = JSON.parse(text);
+        if (manifest && manifest.chunk > 0) chunk = manifest.chunk;
+        return manifest;
+      })
+      .catch((err) => { manifestPromise = null; throw err; });
+    return manifestPromise;
+  }
+
+  function ensureWidxChar(char) {
+    if (char in widxCache) return Promise.resolve(widxCache[char]);
+    if (char in widxPending) return widxPending[char];
+    widxPending[char] = (async () => {
+      try {
+        const m = await ensureManifest();
+        if (m && m.widx && m.widx.indexOf(char) === -1) { widxCache[char] = null; return null; }
+        const text = await fetchText(DATA_BASE + '/widx/widx_' + char + '.json');
+        widxCache[char] = JSON.parse(text);
+        return widxCache[char];
+      } catch (err) {
+        delete widxPending[char];
+        throw err;
+      }
+    })();
+    return widxPending[char];
+  }
+
+  function ensurePackBucket(bucket) {
+    if (bucket in packCache) return Promise.resolve(packCache[bucket]);
+    if (bucket in packPending) return packPending[bucket];
+    packPending[bucket] = (async () => {
+      try {
+        const m = await ensureManifest();
+        if (m && m.packs && m.packs.indexOf(bucket) === -1) { packCache[bucket] = null; return null; }
+        const text = await fetchText(DATA_BASE + '/packs/pack_' + bucket + '.json');
+        packCache[bucket] = new Map(Object.entries(JSON.parse(text)));
+        return packCache[bucket];
+      } catch (err) {
+        delete packPending[bucket];
+        throw err;
+      }
+    })();
+    return packPending[bucket];
+  }
+
+  function ensureRuBucket(bucket) {
+    if (bucket in ruCache) return Promise.resolve(ruCache[bucket]);
+    if (bucket in ruPending) return ruPending[bucket];
+    ruPending[bucket] = (async () => {
+      try {
+        const m = await ensureManifest();
+        if (m && m.ru && m.ru.indexOf(bucket) === -1) { ruCache[bucket] = null; return null; }
+        const text = await fetchText(DATA_BASE + '/ru/ru_' + bucket + '.jsonl');
+        ruCache[bucket] = parseJsonl(text);
+        return ruCache[bucket];
+      } catch (err) {
+        delete ruPending[bucket];
+        throw err;
+      }
+    })();
+    return ruPending[bucket];
+  }
+
+  async function packEntry(id) {
+    const map = await ensurePackBucket(bucketOf(id));
+    return map ? (map.get(String(id)) || null) : null;
   }
 
   function tokenizeQuery(q) {
@@ -177,13 +251,6 @@
       .map((t) => t.replace(/^'+|'+$/g, ''))
       .filter(Boolean);
     return [...new Set(toks)];
-  }
-
-  function intersectArrays(a, b) {
-    const small = a.length <= b.length ? a : b;
-    const large = a.length <= b.length ? b : a;
-    const set = new Set(small);
-    return large.filter((x) => set.has(x));
   }
 
   function shuffle(a) {
@@ -195,33 +262,53 @@
     return arr;
   }
 
-  function buildLocalItem(id) {
-    const d = localData;
-    const text = d.engMap.get(id);
+  async function buildLocalItem(id) {
+    const e = await packEntry(id);
+    if (!e) return null;
+    const text = e.t;
     if (!text) return null;
-    let ruText = null;
-    const ruIds = d.linksMap.get(String(id));
-    if (ruIds && ruIds.length) {
-      for (const rid of ruIds) {
-        const t = d.ruMap.get(rid) || d.ruMap.get(String(rid));
-        if (t) { ruText = t; break; }
-      }
-    }
-    const audioIds = d.audioMap.get(String(id));
-    const audios = (audioIds || []).map((a) => AUDIO_BASE + '/' + a + '/file');
-    if (!audios.length) return null;
-    return { enId: id, enText: text, ruText, auto: !ruText, audios };
+    const audioIds = e.a || [];
+    if (!audioIds.length) return null;
+    const audios = audioIds.map((a) => AUDIO_BASE + '/' + a + '/file');
+    const ruIds = e.l || [];
+    return { enId: id, enText: text, ruText: null, ruIds, auto: !ruIds.length, audios };
   }
 
-  function fillPool(target) {
-    while (state.pool.length < target && state.candIdx < state.candQueue.length) {
+  async function fillPool(target) {
+    while (state.pool.length < target) {
+      if (state.candIdx >= state.candQueue.length) {
+        const ok = await refillWindow();
+        if (!ok) break;
+      }
       const id = state.candQueue[state.candIdx++];
       if (state.seenIds.has(id)) continue;
-      const item = buildLocalItem(id);
+      const item = await buildLocalItem(id);
       if (!item) continue;
       state.seenIds.add(id);
       state.pool.push(item);
     }
+  }
+
+  async function refillWindow() {
+    let added = 0;
+    while (state.bucketPos < state.bucketOrder.length && state.packsLoaded < MAX_PACKS_PER_SEARCH) {
+      const bucket = state.bucketOrder[state.bucketPos++];
+      await ensurePackBucket(bucket).catch(() => null);
+      state.packsLoaded++;
+      const map = packCache[bucket];
+      if (!map) continue;
+      const withRu = [];
+      const withoutRu = [];
+      for (const id of state.bucketIds[bucket] || []) {
+        const entry = map.get(String(id));
+        if (!entry) continue;
+        (entry.l && entry.l.length ? withRu : withoutRu).push(id);
+      }
+      added += withRu.length + withoutRu.length;
+      state.candQueue = state.candQueue.concat(shuffle(withRu), shuffle(withoutRu));
+      if (state.candQueue.length - state.candIdx >= state.pool.length + SEARCH_LIMIT) break;
+    }
+    return added > 0;
   }
 
   async function fetchTimeout(url) {
@@ -245,21 +332,37 @@
 
   async function performSearch(q) {
     resetPool();
-    const d = await ensureData();
+    await ensureManifest();
     const tokens = tokenizeQuery(q);
+    const chars = [];
+    for (const tok of tokens) {
+      const c = tokenBucketChar(tok);
+      if (c !== '_' && chars.indexOf(c) === -1) chars.push(c);
+    }
+    await Promise.all(chars.map((c) => ensureWidxChar(c).catch(() => null)));
     let cands = null;
     for (const tok of tokens) {
-      const list = d.wordidx[tok];
-      if (!list) return false;
+      const c = tokenBucketChar(tok);
+      const idx = c === '_' ? null : widxCache[c];
+      const list = idx ? idx[tok] : null;
+      if (!list || !list.length) return false;
       const set = new Set(list);
       cands = cands === null ? list : cands.filter((id) => set.has(id));
     }
     if (!cands || !cands.length) return false;
-    const withRu = cands.filter((id) => d.linksMap.has(String(id)));
-    const withoutRu = cands.filter((id) => !d.linksMap.has(String(id)));
-    state.candQueue = shuffle(withRu).concat(shuffle(withoutRu));
+    const byBucket = new Map();
+    for (const id of cands) {
+      const b = bucketOf(id);
+      if (!byBucket.has(b)) byBucket.set(b, []);
+      byBucket.get(b).push(id);
+    }
+    const order = [...byBucket.keys()].sort((a, b) => byBucket.get(b).length - byBucket.get(a).length);
+    state.bucketOrder = order;
+    state.bucketIds = Object.fromEntries(byBucket);
+    state.bucketPos = 0;
+    state.candQueue = [];
     state.candIdx = 0;
-    fillPool(SEARCH_LIMIT);
+    await fillPool(SEARCH_LIMIT);
     return state.pool.length > 0;
   }
 
@@ -333,9 +436,36 @@
     return null;
   }
 
+  function loadLocalRuText(item) {
+    if (!item || !item.ruIds || !item.ruIds.length) return Promise.resolve(null);
+    return (async () => {
+      for (const rid of item.ruIds) {
+        try {
+          const rmap = await ensureRuBucket(bucketOf(rid));
+          const t = rmap ? rmap.get(rid) : null;
+          if (t) return t;
+        } catch (e2) { /* пробуем следующий перевод */ }
+      }
+      return null;
+    })();
+  }
+
   function prefetchTranslation(item) {
     if (!item || item.ruText || item.pending || item.failed) return;
     item.pending = true;
+    if (item.ruIds && item.ruIds.length) {
+      loadLocalRuText(item).then(
+        (text) => {
+          item.pending = false;
+          item.ruText = text;
+          item.failed = !text;
+          item.auto = !text;
+          if (currentItem() === item) renderState();
+        },
+        () => { item.pending = false; item.failed = true; if (currentItem() === item) renderState(); }
+      );
+      return;
+    }
     translateRu(item.enText).then(
       (text) => {
         item.pending = false;
@@ -481,15 +611,25 @@ function resetExercise() {
       return;
     }
     const before = state.pool.length;
-    fillPool(state.pool.length + SEARCH_LIMIT);
-    if (state.pool.length > before) {
-      state.cursor = before;
-      resetExercise();
-      renderState();
-      return;
-    }
-    setError('Предложения по этому слову закончились. Нажмите «Повторить» для нового поиска или выберите новое слово.', true);
+    state.loadingMore = true;
     renderState();
+    fillPool(state.pool.length + SEARCH_LIMIT)
+      .then(() => {
+        state.loadingMore = false;
+        if (state.pool.length > before) {
+          state.cursor = before;
+          resetExercise();
+          renderState();
+          return;
+        }
+        setError('Предложения по этому слову закончились. Нажмите «Повторить» для нового поиска или выберите новое слово.', true);
+        renderState();
+      })
+      .catch(() => {
+        state.loadingMore = false;
+        setError('Не удалось загрузить данные. Проверьте соединение.', true);
+        renderState();
+      });
   }
 
   function onNewWord() {
