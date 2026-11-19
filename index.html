@@ -95,52 +95,11 @@
 
   <footer class="app-footer">
     <p>Переведите русское предложение на английский и сверьтесь с оригиналом Tatoeba</p>
-    <p><a id="link-guide" href="guide.html">Руководство пользователя</a></p>
-    <button id="btnTheme">Тема: авто</button>
+    <p><a id="link-guide" href="guide.html">Руководство пользователя</a> · <a href="settings.html">Настройки</a></p>
   </footer>
 
-  <script>
-    (function () {
-      'use strict';
-      var KEY = 'tatoeba-theme';
-      var MODES = ['system', 'dark', 'light'];
-      var LABELS = { system: 'Тема: авто', dark: 'Тема: тёмная', light: 'Тема: светлая' };
-      var mq = window.matchMedia('(prefers-color-scheme: dark)');
-
-      function apply(mode) {
-        document.documentElement.removeAttribute('data-theme');
-        if (mode === 'dark' || mode === 'light') document.documentElement.setAttribute('data-theme', mode);
-        var dark = mode === 'dark' || (mode === 'system' && mq.matches);
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', dark ? '#0f141d' : '#2f6fed');
-      }
-
-      function refresh() {
-        var mode = 'system';
-        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
-        apply(mode);
-        var btn = document.getElementById('btnTheme');
-        if (btn) {
-          btn.textContent = LABELS[mode] || LABELS.system;
-          btn.title = 'Переключить тему';
-        }
-      }
-
-      var btn = document.getElementById('btnTheme');
-      if (btn) {
-        btn.addEventListener('click', function () {
-          var mode = 'system';
-          try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
-          var next = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
-          try { localStorage.setItem(KEY, next); } catch (e) {}
-          refresh();
-        });
-      }
-      if (mq.addEventListener) mq.addEventListener('change', refresh);
-      else if (mq.addListener) mq.addListener(refresh);
-      refresh();
-    })();
-  </script>
+  <script src="theme.js"></script>
+  <script src="dl.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f6fed">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f141d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Настройки — Тренажёр английского</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .settings {
+      max-width: 680px;
+      color: var(--text);
+    }
+    .settings h1 { margin: 0 0 6px; font-size: 1.5rem; letter-spacing: -0.01em; }
+    .settings h2 {
+      margin: 34px 0 10px;
+      font-size: 1.18rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .settings h2:first-of-type { margin-top: 0; }
+    .settings p { line-height: 1.55; }
+    .settings-header { margin-bottom: 26px; text-align: center; }
+    .settings-header .sub a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main id="app" class="settings">
+    <header class="settings-header">
+      <h1>Настройки</h1>
+      <p class="sub">Тренажёр английского на базе открытой базы предложений <a href="https://tatoeba.org/ru">Tatoeba</a></p>
+    </header>
+
+    <section id="s-theme">
+      <h2>Оформление</h2>
+      <p>Тема переключается по кругу: авто → тёмная → светлая. Выбор сохраняется на этом устройстве.</p>
+      <div class="btn-group">
+        <button id="btnTheme" class="primary">Тема: авто</button>
+      </div>
+    </section>
+
+    <section id="s-data">
+      <h2>Данные для офлайн-режима</h2>
+      <p>
+        Обычно приложение скачивает данные по частям, по мере использования. Чтобы оно
+        целиком работало без интернета (в том числе сразу после установки), нажмите кнопку ниже —
+        загрузятся все файлы (~318 шт.). Прерванную загрузку можно продолжить, вернувшись сюда позже.
+      </p>
+      <section id="panel-dl" class="panel dl-panel hidden" data-always>
+        <div class="dl-row">
+          <progress id="dl-progress" max="100" value="0"></progress>
+          <button id="btnDl" class="primary">Скачать все данные</button>
+        </div>
+        <p id="dl-status" class="label dl-status"></p>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Настройки · Тренажёр английского на базе Tatoeba</p>
+    <p><a href="index.html">← К тренажёру</a> · <a href="guide.html">Руководство пользователя</a></p>
+  </footer>
+
+  <script src="theme.js"></script>
+  <script src="dl.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function () {});
+      });
+    }
+  </script>
+</body>
+</html>

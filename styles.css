@@ -158,6 +158,19 @@ body {
 
 .hidden { display: none !important; }
 
+.dl-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.dl-row progress {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.dl-row button { white-space: nowrap; }
+
 .panel { margin-bottom: 20px; }
 .panel:last-child { margin-bottom: 0; }
 

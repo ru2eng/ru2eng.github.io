@@ -1,12 +1,16 @@
 'use strict';
 
-var CACHE = 'tatoeba-shell-v4';
+var CACHE = 'tatoeba-shell-v5';
 var DATA_CACHE = 'tatoeba-data-v1';
 var SHELL = [
   './',
   './index.html',
+  './guide.html',
+  './settings.html',
   './styles.css',
   './app.js',
+  './dl.js',
+  './theme.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -59,10 +63,10 @@ function checkManifestVersion(request) {
         if (!fresh || fresh.status !== 200) return cached || fresh;
         var forText = fresh.clone();
         var forCache = fresh.clone();
-        var cachedTextP = cached ? cached.text() : Promise.resolve('');
+        var cachedTextP = cached ? cached.text() : Promise.resolve(null);
         var freshTextP = forText.text();
         return Promise.all([cachedTextP, freshTextP]).then(function (texts) {
-          var changed = manifestDate(texts[1]) !== manifestDate(texts[0]);
+          var changed = texts[0] !== null && manifestDate(texts[1]) !== manifestDate(texts[0]);
           return cache.keys().then(function (keys) {
             if (!changed) return undefined;
             return Promise.all(keys.map(function (key) { return cache.delete(key); }));

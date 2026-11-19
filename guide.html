@@ -241,7 +241,7 @@
     <section id="s8">
       <h2>8. Тема оформления</h2>
       <p>
-        Внизу страницы есть кнопка <button type="button" id="btnThemeFooterPreview" style="padding:4px 10px; min-height:0;">Тема: авто</button>,
+        На странице «Настройки» есть кнопка <button type="button" id="btnThemeFooterPreview" style="padding:4px 10px; min-height:0;">Тема: авто</button>,
         она переключает три режима:
       </p>
       <ul>
@@ -294,52 +294,10 @@
 
   <footer class="app-footer">
     <p>Руководство пользователя · Тренажёр английского на базе Tatoeba</p>
-    <a href="index.html">← К тренажёру</a>
-    <button id="btnTheme">Тема: авто</button>
+    <p><a href="index.html">← К тренажёру</a> · <a href="settings.html">Настройки</a></p>
   </footer>
 
-  <script>
-    (function () {
-      'use strict';
-      var KEY = 'tatoeba-theme';
-      var MODES = ['system', 'dark', 'light'];
-      var LABELS = { system: 'Тема: авто', dark: 'Тема: тёмная', light: 'Тема: светлая' };
-      var mq = window.matchMedia('(prefers-color-scheme: dark)');
-
-      function apply(mode) {
-        document.documentElement.removeAttribute('data-theme');
-        if (mode === 'dark' || mode === 'light') document.documentElement.setAttribute('data-theme', mode);
-        var dark = mode === 'dark' || (mode === 'system' && mq.matches);
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', dark ? '#0f141d' : '#2f6fed');
-      }
-
-      function refresh() {
-        var mode = 'system';
-        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
-        apply(mode);
-        var buttons = document.querySelectorAll('#btnTheme, #btnThemeFooterPreview');
-        for (var i = 0; i < buttons.length; i++) {
-          buttons[i].textContent = LABELS[mode] || LABELS.system;
-          buttons[i].title = 'Переключить тему';
-        }
-      }
-
-      function onClick() {
-        var mode = 'system';
-        try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) {}
-        var next = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
-        try { localStorage.setItem(KEY, next); } catch (e) {}
-        refresh();
-      }
-
-      var buttons = document.querySelectorAll('#btnTheme, #btnThemeFooterPreview');
-      for (var i = 0; i < buttons.length; i++) buttons[i].addEventListener('click', onClick);
-      if (mq.addEventListener) mq.addEventListener('change', refresh);
-      else if (mq.addListener) mq.addListener(refresh);
-      refresh();
-    })();
-  </script>
+  <script src="theme.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
